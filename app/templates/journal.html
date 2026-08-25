@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+
+{% block title %}Journal — Dreamframe{% endblock %}
+
+{% block content %}
+<section class="page">
+  <h1>Journal</h1>
+  <p class="lede">Your saved dream comics live here.</p>
+
+  {% if not dreams %}
+    <p class="muted">No dreams yet. <a href="{{ url_for('dreams.home') }}">Write your first one</a>.</p>
+  {% else %}
+    <div class="journal-list">
+      {% for dream in dreams %}
+        <div class="journal-item">
+          <a class="journal-item-main" href="{{ url_for('dreams.dream_detail', dream_id=dream.id) }}">
+            <h3>{{ dream.title }}</h3>
+            <p>{{ dream.preview }}</p>
+            {% if dream.created_at %}
+              <p class="muted journal-date">{{ dream.created_at.strftime('%b %d, %Y') }}</p>
+            {% endif %}
+          </a>
+          <div class="journal-item-side">
+            <span class="meta">{{ dream.style }}</span>
+            <div class="journal-actions">
+              <a href="{{ url_for('dreams.edit_dream', dream_id=dream.id) }}">Edit</a>
+              <form
+                method="post"
+                action="{{ url_for('dreams.delete_dream', dream_id=dream.id) }}"
+                onsubmit="return confirm('Delete this dream permanently?');"
+              >
+                <button type="submit" class="link-danger">Delete</button>
+              </form>
+            </div>
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+  {% endif %}
+</section>
+{% endblock %}

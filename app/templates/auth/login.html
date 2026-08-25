@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+
+{% block title %}Log in — Dreamframe{% endblock %}
+
+{% block content %}
+<section class="page auth-page">
+  <h1>Log in</h1>
+  <p class="lede">Open your private dream journal.</p>
+
+  <form class="dream-form auth-form" method="post" action="{{ url_for('auth.login', next=request.args.get('next', '')) }}">
+    <input type="hidden" name="next" value="{{ request.args.get('next', '') }}" />
+    <label>
+      Username
+      <input type="text" name="username" required autocomplete="username" />
+    </label>
+    <label>
+      Password
+      <input type="password" name="password" required autocomplete="current-password" />
+    </label>
+    <button type="submit">Log in</button>
+    <p class="muted form-hint">New here? <a href="{{ url_for('auth.register') }}">Create an account</a></p>
+  </form>
+</section>
+{% endblock %}

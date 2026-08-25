@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{% block title %}Dreamframe{% endblock %}</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,700&family=Outfit:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <a class="brand" href="{{ url_for('dreams.home') if g.user else url_for('auth.login') }}">Dreamframe</a>
+        <nav>
+          {% if g.user %}
+            <a href="{{ url_for('dreams.home') }}">New dream</a>
+            <a href="{{ url_for('dreams.journal') }}">Journal</a>
+            <a href="{{ url_for('map.dream_map') }}">Dream map</a>
+            <span class="nav-user">{{ g.user.username }}</span>
+            <form class="nav-logout" method="post" action="{{ url_for('auth.logout') }}">
+              <button type="submit">Log out</button>
+            </form>
+          {% else %}
+            <a href="{{ url_for('auth.login') }}">Log in</a>
+            <a href="{{ url_for('auth.register') }}">Sign up</a>
+          {% endif %}
+        </nav>
+      </header>
+
+      <main>
+        {% with messages = get_flashed_messages(with_categories=true) %}
+          {% if messages %}
+            <ul class="flash-list">
+              {% for category, message in messages %}
+                <li class="flash flash-{{ category }}">{{ message }}</li>
+              {% endfor %}
+            </ul>
+          {% endif %}
+        {% endwith %}
+
+        {% block content %}{% endblock %}
+      </main>
+
+      <footer class="footer">
+        For reflection and fun — not therapy or medical advice.
+      </footer>
+    </div>
+
+    <div id="loading-overlay" class="loading-overlay" hidden>
+      <div class="loading-card">
+        <div class="loading-spinner" aria-hidden="true"></div>
+        <p id="loading-message">Working on your dream…</p>
+        <p class="muted loading-sub">Keep this tab open. After the comic text, pictures draw in parallel.</p>
+      </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+  </body>
+</html>

@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+
+{% block title %}{{ symbol.display_name }} — Dream map{% endblock %}
+
+{% block content %}
+<section class="page">
+  <a class="back-link" href="{{ url_for('map.dream_map') }}">← Dream map</a>
+
+  <p class="eyebrow">{{ symbol.kind }}</p>
+  <h1>{{ symbol.display_name }}</h1>
+  <p class="lede">
+    Appeared in {{ symbol.mention_count }} dream{{ 's' if symbol.mention_count != 1 else '' }}.
+    {% if symbol.mention_count >= 2 %}This one is recurring in your nights.{% endif %}
+  </p>
+
+  {% if not dreams %}
+    <p class="muted">No linked dreams yet.</p>
+  {% else %}
+    <div class="journal-list">
+      {% for dream in dreams %}
+        <a class="journal-item" href="{{ url_for('dreams.dream_detail', dream_id=dream.id) }}">
+          <div class="journal-item-main">
+            <h3>{{ dream.title }}</h3>
+            <p>{{ dream.preview }}{% if dream.preview|length >= 140 %}…{% endif %}</p>
+            {% if dream.created_at %}
+              <p class="muted journal-date">{{ dream.created_at.strftime('%b %d, %Y') }}</p>
+            {% endif %}
+          </div>
+          <span class="meta">{{ dream.style }}</span>
+        </a>
+      {% endfor %}
+    </div>
+  {% endif %}
+</section>
+{% endblock %}

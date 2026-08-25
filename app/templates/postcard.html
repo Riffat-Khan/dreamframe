@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+
+{% block title %}Postcard — {{ analysis.title }} — Dreamframe{% endblock %}
+
+{% block content %}
+<section class="page postcard-page">
+  <a class="back-link" href="{{ url_for('dreams.dream_detail', dream_id=dream.id) }}">← Back to dream</a>
+
+  <div class="postcard-toolbar">
+    <div>
+      <p class="eyebrow">Shareable dream postcard</p>
+      <h1>Made for sending</h1>
+      <p class="lede">Title, three panels, one line — with a Dreamframe mark.</p>
+    </div>
+    <div class="action-bar">
+      <a class="btn btn-secondary" href="{{ url_for('dreams.dream_postcard_svg', dream_id=dream.id) }}">Download SVG</a>
+      <button class="btn btn-secondary" type="button" id="download-png">Download PNG</button>
+    </div>
+  </div>
+
+  <article class="postcard" id="dream-postcard">
+    <header class="postcard-top">
+      <p class="postcard-brand">Dreamframe</p>
+      <h2>{{ analysis.title }}</h2>
+      <p class="postcard-line">{{ analysis.summary }}</p>
+    </header>
+
+    <div class="postcard-panels">
+      {% for panel in analysis.panels[:3] %}
+        <figure class="postcard-panel">
+          <div class="postcard-panel-frame">
+            {% if panel.image_url %}
+              <img src="{{ panel.image_url }}?v={{ dream.id }}-{{ panel.panel_number }}" alt="Panel {{ panel.panel_number }}" />
+            {% else %}
+              <div class="postcard-fallback">{{ panel.scene_description }}</div>
+            {% endif %}
+          </div>
+          <figcaption>{{ panel.caption }}</figcaption>
+        </figure>
+      {% endfor %}
+    </div>
+
+    <footer class="postcard-foot">
+      <span>Dreamframe — for reflection and fun, not therapy.</span>
+      <span>dream #{{ dream.id }}</span>
+    </footer>
+  </article>
+</section>
+{% endblock %}

@@ -1,0 +1,130 @@
+{% extends "base.html" %}
+
+{% block title %}{{ analysis.title if analysis else 'Dream' }} — Dreamframe{% endblock %}
+
+{% block content %}
+<section class="page">
+  <a class="back-link" href="{{ url_for('dreams.journal') }}">← Journal</a>
+
+  {% if analysis %}
+    <h1>{{ analysis.title }}</h1>
+    <p class="lede">{{ analysis.summary }}</p>
+
+    <div class="action-bar">
+      <a class="btn btn-secondary" href="{{ url_for('dreams.edit_dream', dream_id=dream.id) }}">Edit</a>
+      <a class="btn btn-secondary" href="{{ url_for('dreams.dream_postcard', dream_id=dream.id) }}">Postcard</a>
+      <form
+        method="post"
+        action="{{ url_for('dreams.regenerate_dream', dream_id=dream.id) }}"
+        data-loading="Rewriting your comic…"
+      >
+        <button class="btn btn-secondary" type="submit">Regenerate all</button>
+      </form>
+      <form
+        method="post"
+        action="{{ url_for('dreams.regenerate_images', dream_id=dream.id) }}"
+        data-loading="Starting a new set of pictures…"
+      >
+        <button class="btn btn-secondary" type="submit">Regenerate images</button>
+      </form>
+      <form
+        method="post"
+        action="{{ url_for('dreams.delete_dream', dream_id=dream.id) }}"
+        onsubmit="return confirm('Delete this dream permanently?');"
+      >
+        <button class="btn btn-danger" type="submit">Delete</button>
+      </form>
+    </div>
+    <p class="muted form-hint">
+      Pictures start drawing at the same time. Whichever panel finishes first appears first.
+    </p>
+
+    {% if dream_symbols %}
+      <div class="tag-groups">
+        <div>
+          <p class="tag-label">On your dream map</p>
+          <div class="tags">
+            {% for symbol in dream_symbols %}
+              <a
+                class="symbol-pill{% if symbol.mention_count >= 2 %} recurring{% endif %}"
+                href="{{ url_for('map.symbol_detail', symbol_id=symbol.id) }}"
+              >
+                {{ symbol.display_name }}
+                {% if symbol.mention_count >= 2 %}<em>{{ symbol.mention_count }}×</em>{% endif %}
+              </a>
+            {% endfor %}
+          </div>
+        </div>
+      </div>
+    {% endif %}
+
+    {% if analysis.themes or analysis.emotions %}
+      <div class="tag-groups">
+        {% if analysis.themes %}
+          <div>
+            <p class="tag-label">Themes</p>
+            <div class="tags">
+              {% for theme in analysis.themes %}
+                <span>{{ theme }}</span>
+              {% endfor %}
+            </div>
+          </div>
+        {% endif %}
+        {% if analysis.emotions %}
+          <div>
+            <p class="tag-label">Emotions</p>
+            <div class="tags tags-emotions">
+              {% for emotion in analysis.emotions %}
+                <span>{{ emotion }}</span>
+              {% endfor %}
+            </div>
+          </div>
+        {% endif %}
+      </div>
+    {% endif %}
+
+    <div
+      class="panel-grid"
+      data-draw-panels
+      data-draw-url="{{ url_for('dreams.generate_panel_image', dream_id=dream.id, panel_number=999) }}"
+      data-pending-panels="{{ pending_panels|join(',') }}"
+    >
+      {% for panel in analysis.panels %}
+        <article class="panel-card">
+          <div class="panel-number">Panel {{ panel.panel_number }}</div>
+          <div class="panel-media" data-panel-media="{{ panel.panel_number }}" data-caption="{{ panel.caption }}">
+            {% if panel.image_url %}
+              <img
+                class="panel-image"
+                src="{{ panel.image_url }}?v={{ dream.id }}-{{ panel.panel_number }}"
+                alt="Comic panel {{ panel.panel_number }}: {{ panel.caption }}"
+                loading="lazy"
+              />
+            {% else %}
+              <div class="panel-placeholder">
+                <p class="panel-scene">{{ panel.scene_description }}</p>
+                <p class="muted panel-scene-small panel-status">Waiting to draw this panel…</p>
+              </div>
+            {% endif %}
+          </div>
+          <p class="panel-caption">{{ panel.caption }}</p>
+          {% if panel.reflection_question %}
+            <p class="panel-question">{{ panel.reflection_question }}</p>
+          {% endif %}
+          <p class="panel-scene panel-scene-small">{{ panel.scene_description }}</p>
+        </article>
+      {% endfor %}
+    </div>
+  {% endif %}
+
+  <details class="raw-dream">
+    <summary>Original dream text</summary>
+    <p>{{ dream.original_text }}</p>
+    {% if dream.mood %}<p class="muted">Mood: {{ dream.mood }}</p>{% endif %}
+    <p class="muted">Style: {{ dream.style }}</p>
+    {% if dream.created_at %}
+      <p class="muted">Saved {{ dream.created_at.strftime('%b %d, %Y · %H:%M') }} UTC</p>
+    {% endif %}
+  </details>
+</section>
+{% endblock %}

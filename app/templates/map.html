@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+
+{% block title %}Dream map — Dreamframe{% endblock %}
+
+{% block content %}
+<section class="page">
+  <div class="map-header">
+    <div>
+      <p class="eyebrow">Your private lexicon</p>
+      <h1>Dream map</h1>
+      <p class="lede">
+        People, places, and objects that keep showing up in your nights —
+        the unique fingerprint of your dream life.
+      </p>
+    </div>
+    <form method="post" action="{{ url_for('map.rebuild_map') }}" data-loading="Refreshing your dream map…">
+      <button class="btn btn-secondary" type="submit">Refresh map</button>
+    </form>
+  </div>
+
+  {% if not symbols %}
+    <p class="muted">
+      No symbols yet. Write a dream (or hit Refresh map) and recurring motifs will appear here.
+    </p>
+  {% else %}
+    {% if recurring %}
+      <section class="map-section">
+        <h2>Recurring</h2>
+        <p class="muted">Appeared in more than one dream.</p>
+        <div class="symbol-cloud">
+          {% for symbol in recurring %}
+            <a
+              class="symbol-chip symbol-{{ symbol.kind }} recurring"
+              href="{{ url_for('map.symbol_detail', symbol_id=symbol.id) }}"
+              style="--weight: {{ 0.85 + (symbol.mention_count * 0.08) }}"
+            >
+              <span class="symbol-name">{{ symbol.display_name }}</span>
+              <span class="symbol-meta">{{ symbol.kind }} · {{ symbol.mention_count }}×</span>
+            </a>
+          {% endfor %}
+        </div>
+      </section>
+    {% endif %}
+
+    {% for kind, label in [('person', 'People'), ('place', 'Places'), ('object', 'Objects'), ('motif', 'Motifs')] %}
+      {% if grouped.get(kind) %}
+        <section class="map-section">
+          <h2>{{ label }}</h2>
+          <div class="symbol-cloud">
+            {% for symbol in grouped[kind] %}
+              <a
+                class="symbol-chip symbol-{{ symbol.kind }}{% if symbol.mention_count >= 2 %} recurring{% endif %}"
+                href="{{ url_for('map.symbol_detail', symbol_id=symbol.id) }}"
+              >
+                <span class="symbol-name">{{ symbol.display_name }}</span>
+                <span class="symbol-meta">{{ symbol.mention_count }} dream{{ 's' if symbol.mention_count != 1 else '' }}</span>
+              </a>
+            {% endfor %}
+          </div>
+        </section>
+      {% endif %}
+    {% endfor %}
+  {% endif %}
+</section>
+{% endblock %}

@@ -1,0 +1,45 @@
+# OS
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Editors
+.vscode/
+.idea/
+*.swp
+*~
+
+# Secrets
+.env
+!.env.example
+
+# Python
+.venv/
+venv/
+env/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+dist/
+build/
+
+# Local data
+*.db
+*.sqlite3
+data/*.db
+uploads/
+instance/
+
+# Unused split-app stubs (this project is a single Flask app)
+frontend/
+backend/
+app/static/generated/*
+!app/static/generated/.gitkeep
+
+# Misc
+.cursor/

@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+
+{% block title %}Create account — Dreamframe{% endblock %}
+
+{% block content %}
+<section class="page auth-page">
+  <h1>Create account</h1>
+  <p class="lede">Save your dream comics privately in your own journal.</p>
+
+  <form class="dream-form auth-form" method="post" action="{{ url_for('auth.register') }}">
+    <label>
+      Username
+      <input type="text" name="username" minlength="3" maxlength="80" required autocomplete="username" />
+    </label>
+    <label>
+      Password
+      <input type="password" name="password" minlength="6" required autocomplete="new-password" />
+    </label>
+    <label>
+      Confirm password
+      <input type="password" name="confirm" minlength="6" required autocomplete="new-password" />
+    </label>
+    <button type="submit">Create account</button>
+    <p class="muted form-hint">Already have an account? <a href="{{ url_for('auth.login') }}">Log in</a></p>
+  </form>
+</section>
+{% endblock %}

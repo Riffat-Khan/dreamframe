@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+
+{% block title %}Edit dream — Dreamframe{% endblock %}
+
+{% block content %}
+<section class="page">
+  <a class="back-link" href="{{ url_for('dreams.dream_detail', dream_id=dream.id) }}">← Back to dream</a>
+
+  <h1>Edit dream</h1>
+  <p class="lede">Update your dream text, mood, or style.</p>
+
+  <form
+    class="dream-form"
+    method="post"
+    action="{{ url_for('dreams.update_dream', dream_id=dream.id) }}"
+    data-loading="Saving your dream…"
+  >
+    <label>
+      Your dream
+      <textarea name="original_text" rows="8" minlength="10" required>{{ dream.original_text }}</textarea>
+    </label>
+
+    <div class="form-row">
+      <label>
+        Mood (optional)
+        <input type="text" name="mood" value="{{ dream.mood or '' }}" placeholder="uneasy, excited, weird..." />
+      </label>
+
+      <label>
+        Style
+        <select name="style">
+          {% for style in styles %}
+            <option value="{{ style }}" {% if style == dream.style %}selected{% endif %}>
+              {{ style|capitalize }}
+            </option>
+          {% endfor %}
+        </select>
+      </label>
+    </div>
+
+    <label class="checkbox-row">
+      <input type="checkbox" name="reanalyze" value="1" checked />
+      Also regenerate comic + images after saving
+    </label>
+
+    <div class="action-bar">
+      <button type="submit">Save changes</button>
+      <a class="btn btn-secondary" href="{{ url_for('dreams.dream_detail', dream_id=dream.id) }}">Cancel</a>
+    </div>
+    <p class="muted form-hint">
+      Also regenerate comic after saving. Pictures then draw in parallel.
+    </p>
+  </form>
+</section>
+{% endblock %}
