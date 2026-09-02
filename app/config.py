@@ -1,4 +1,5 @@
 import os
+import sys
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -24,7 +25,16 @@ def _sqlite_uri(raw: str | None) -> str:
 
 class Config:
     SECRET_KEY = os.getenv("SECRET_KEY", "dev-secret-change-me")
-    SQLALCHEMY_DATABASE_URI = _sqlite_uri(os.getenv("DATABASE_URL"))
+
+    # Database configuration
+    _database_url = os.getenv("DATABASE_URL")
+    if _database_url and not _database_url.startswith("sqlite"):
+        # Use provided PostgreSQL/external database URL
+        SQLALCHEMY_DATABASE_URI = _database_url
+    else:
+        # Fall back to SQLite (local development or Render)
+        SQLALCHEMY_DATABASE_URI = _sqlite_uri(_database_url)
+
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     # Allow parallel panel-image requests against SQLite.
     SQLALCHEMY_ENGINE_OPTIONS = {"connect_args": {"check_same_thread": False}}
