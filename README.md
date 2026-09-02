@@ -101,6 +101,30 @@ OPENAI_MODEL=gpt-4o-mini
 IMAGE_PROVIDER=openai
 ```
 
+## Deploy on Vercel
+
+This app’s Flask instance lives in `run.py`, not `app.py`. Vercel needs that called out:
+
+```toml
+[tool.vercel]
+entrypoint = "run:app"
+```
+
+Push to `stage`, then in the Vercel project set at least:
+
+```env
+SECRET_KEY=a-long-random-string
+USE_MOCK_AI=false
+OPENAI_API_KEY=gsk_your_real_key
+OPENAI_BASE_URL=https://api.groq.com/openai/v1
+OPENAI_MODEL=openai/gpt-oss-20b
+IMAGE_PROVIDER=pollinations
+GENERATE_IMAGES=true
+DATABASE_URL=postgresql://USER:PASSWORD@HOST:PORT/DBNAME
+```
+
+SQLite will not persist on Vercel. Use the host’s Postgres `DATABASE_URL`. Image files under `app/static/generated/` are also ephemeral on Vercel.
+
 ## Deploy on Render (free)
 
 This is a portfolio demo. The free instance sleeps after idle; the first visit can take ~30–60 seconds. SQLite data can reset on redeploy.
