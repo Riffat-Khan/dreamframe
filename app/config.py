@@ -36,8 +36,14 @@ class Config:
         SQLALCHEMY_DATABASE_URI = _sqlite_uri(_database_url)
 
     SQLALCHEMY_TRACK_MODIFICATIONS = False
-    # Allow parallel panel-image requests against SQLite.
-    SQLALCHEMY_ENGINE_OPTIONS = {"connect_args": {"check_same_thread": False}}
+    if SQLALCHEMY_DATABASE_URI.startswith("sqlite"):
+        SQLALCHEMY_ENGINE_OPTIONS = {
+            "connect_args": {
+                "check_same_thread": False
+            }
+        }
+    else:
+        SQLALCHEMY_ENGINE_OPTIONS = {}
 
     OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
     # Default: Groq free OpenAI-compatible API
