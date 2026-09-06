@@ -1,6 +1,3 @@
-import os
-from pathlib import Path
-
 from flask import Flask
 from sqlalchemy import inspect, text
 
@@ -41,5 +38,9 @@ def create_app(config_class: type[Config] = Config) -> Flask:
         db.create_all()
         _ensure_column("dream_entries", "user_id", "user_id INTEGER")
         _ensure_column("dream_analyses", "symbols_json", "symbols_json TEXT DEFAULT '[]'")
+
+    # Initialize the async task queue
+    from app.services.task_queue import get_task_queue  # noqa: F401
+    get_task_queue()
 
     return app
