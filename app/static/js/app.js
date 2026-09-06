@@ -74,9 +74,11 @@
       }
     }
 
-    pending.forEach((panelNumber) => {
-      drawPanel(panelNumber);
-    });
+    Promise.allSettled(
+      pending.map((panelNumber) => drawPanel(panelNumber))
+        ).then((results) => {
+            console.log("All panel generation requests completed:", results);
+        });
   }
 
   // Postcard PNG export (client-side canvas from the postcard card)
