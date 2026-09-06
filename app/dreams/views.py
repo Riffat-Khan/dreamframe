@@ -1,5 +1,6 @@
 """Dream journal view handlers (business logic + responses)."""
 
+import os
 from flask import Response, current_app, flash, g, jsonify, redirect, render_template, request, url_for
 
 from app.dreams.helpers import (
@@ -253,7 +254,40 @@ def queue_panel_image_generation(dream_id: int, panel_number: int):
             "status": "completed"
         })
 
-    # Submit the task to the queue
+    # On Vercel (production), generate synchronously - in-memory queue won't persist across invocations
+    is_production = os.getenv("VERCEL") or os.getenv("NODE_ENV") == "production"
+    if is_production:
+        # Production: Generate directly and return result immediately
+        try:
+            analysis, image_url, error = generate_one_panel_image(
+                analysis,
+                dream_id=dream.id,
+                style=dream.style,
+                dream_text=dream.original_text,
+                panel_number=panel_number,
+                force=False,
+            )
+            if image_url:
+                persist_panel_image_url(dream, panel_number=panel_number, image_url=image_url)
+                return jsonify({
+                    "ok": True,
+                    "task_id": None,
+                    "panel_number": panel_number,
+                    "image_url": image_url,
+                    "status": "completed"
+                })
+            else:
+                return jsonify({
+                    "ok": False,
+                    "error": error or "Could not generate image"
+                }), 503
+        except Exception as exc:
+            return jsonify({
+                "ok": False,
+                "error": str(exc) or "Image generation failed"
+            }), 503
+
+    # Local: Submit the task to the queue (persistent in-memory queue)
     queue = get_task_queue()
     task_id = queue.submit(
         _generate_panel_image_task,
