@@ -40,7 +40,8 @@ def create_app(config_class: type[Config] = Config) -> Flask:
         _ensure_column("dream_analyses", "symbols_json", "symbols_json TEXT DEFAULT '[]'")
 
     # Initialize the async task queue
-    from app.services.task_queue import get_task_queue  # noqa: F401
-    get_task_queue()
+    from app.services.task_queue import get_task_queue
+    queue = get_task_queue()
+    queue.set_app(app)
 
     return app
