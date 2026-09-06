@@ -17,6 +17,7 @@ from app.services.ai import generate_dream_analysis
 from app.services.analysis_utils import analysis_to_storage, parse_analysis
 from app.services.images import delete_dream_images, generate_one_panel_image
 from app.services.postcard import build_postcard_svg
+from app.services.task_queue import get_task_queue
 
 
 def home():
@@ -229,3 +230,117 @@ def delete_dream(dream_id: int):
 
     flash("Dream deleted.", "info")
     return redirect(url_for("dreams.journal"))
+
+
+def queue_panel_image_generation(dream_id: int, panel_number: int):
+    """Queue an async image generation task. Returns immediately with task ID."""
+    dream = get_owned_dream(dream_id)
+    if not dream.analysis:
+        return jsonify({"ok": False, "error": "No comic to illustrate."}), 404
+
+    analysis = parse_analysis(dream.analysis)
+    existing = next((p for p in analysis.panels if p.panel_number == panel_number), None)
+    if existing is None:
+        return jsonify({"ok": False, "error": "Panel not found."}), 404
+
+    if existing.image_url:
+        # Image already exists, return immediately
+        return jsonify({
+            "ok": True,
+            "task_id": None,
+            "panel_number": panel_number,
+            "image_url": existing.image_url,
+            "status": "completed"
+        })
+
+    # Submit the task to the queue
+    queue = get_task_queue()
+    task_id = queue.submit(
+        _generate_panel_image_task,
+        dream_id=dream.id,
+        panel_number=panel_number,
+        style=dream.style,
+        dream_text=dream.original_text,
+        user_id=g.user.id,
+    )
+
+    return jsonify({
+        "ok": True,
+        "task_id": task_id,
+        "panel_number": panel_number,
+        "status": "queued"
+    }), 202
+
+
+def check_image_generation_status(dream_id: int, panel_number: int, task_id: str):
+    """Check status of an image generation task."""
+    dream = get_owned_dream(dream_id)
+    if not dream.analysis:
+        return jsonify({"ok": False, "error": "No comic found."}), 404
+
+    queue = get_task_queue()
+    task = queue.get_status(task_id)
+
+    if task is None:
+        return jsonify({"ok": False, "error": "Task not found."}), 404
+
+    response = {
+        "ok": True,
+        "task_id": task_id,
+        "panel_number": panel_number,
+        "status": task.status.value,
+    }
+
+    if task.status.value == "completed" and task.result:
+        # Task succeeded, return the image URL
+        response["image_url"] = task.result.get("image_url")
+        response["success"] = True
+    elif task.status.value == "failed":
+        # Task failed, return error message
+        response["error"] = task.error or "Image generation failed"
+        response["success"] = False
+
+    return jsonify(response)
+
+
+def _generate_panel_image_task(
+    dream_id: int,
+    panel_number: int,
+    style: str,
+    dream_text: str,
+    user_id: int,
+) -> dict:
+    """
+    Background task function for generating a panel image.
+    This runs in a thread from the task queue worker.
+
+    Returns: dict with "image_url" key on success, or raises exception on failure.
+    """
+    # Get the dream entry
+    dream = DreamEntry.query.get(dream_id)
+    if not dream:
+        raise RuntimeError(f"Dream {dream_id} not found")
+
+    if not dream.analysis:
+        raise RuntimeError("Dream has no analysis")
+
+    # Parse the analysis
+    analysis = parse_analysis(dream.analysis)
+
+    # Generate the image
+    analysis, image_url, error = generate_one_panel_image(
+        analysis,
+        dream_id=dream.id,
+        style=style,
+        dream_text=dream_text,
+        panel_number=panel_number,
+        force=False,
+    )
+
+    if error or not image_url:
+        raise RuntimeError(error or "Could not generate image")
+
+    # Persist the result to database
+    persist_panel_image_url(dream, panel_number=panel_number, image_url=image_url)
+
+    return {"image_url": image_url}

@@ -71,6 +71,20 @@ def generate_panel_image(dream_id: int, panel_number: int):
     return views.generate_panel_image(dream_id, panel_number)
 
 
+@bp.post("/dreams/<int:dream_id>/panels/<int:panel_number>/image/generate")
+@login_required
+def queue_panel_image_generation(dream_id: int, panel_number: int):
+    """Queue an async image generation task."""
+    return views.queue_panel_image_generation(dream_id, panel_number)
+
+
+@bp.get("/dreams/<int:dream_id>/panels/<int:panel_number>/image/status/<task_id>")
+@login_required
+def check_image_generation_status(dream_id: int, panel_number: int, task_id: str):
+    """Check status of an image generation task."""
+    return views.check_image_generation_status(dream_id, panel_number, task_id)
+
+
 @bp.post("/dreams/<int:dream_id>/delete")
 @login_required
 def delete_dream(dream_id: int):

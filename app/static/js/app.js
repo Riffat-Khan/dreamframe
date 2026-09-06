@@ -36,49 +36,133 @@
       .split(",")
       .map((item) => item.trim())
       .filter(Boolean);
-    const urlTemplate = panelGrid.getAttribute("data-draw-url") || "";
+    const dreamId = panelGrid.getAttribute("data-dream-id") || "";
+
+    async function pollImageStatus(dreamId, panelNumber, taskId) {
+      /**
+       * Poll for image generation status.
+       * Returns: { ok: bool, image_url?: string, error?: string }
+       */
+      const media = panelGrid.querySelector(`[data-panel-media="${panelNumber}"]`);
+      const placeholder = media?.querySelector(".panel-placeholder");
+      const status = media?.querySelector(".panel-status");
+
+      let attempts = 0;
+      const maxAttempts = 180; // 30 minutes with 10s polling
+      const pollInterval = 10000; // 10 seconds
+
+      return new Promise((resolve) => {
+        const poll = async () => {
+          attempts += 1;
+          const statusUrl = `/dreams/${dreamId}/panels/${panelNumber}/image/status/${taskId}`;
+          try {
+            const response = await fetch(statusUrl, {
+              method: "GET",
+              headers: { Accept: "application/json" },
+            });
+            const data = await response.json();
+
+            if (!data.ok) {
+              resolve({ ok: false, error: data.error || "Unknown error" });
+              return;
+            }
+
+            if (data.status === "completed") {
+              resolve({ ok: true, image_url: data.image_url });
+            } else if (data.status === "failed") {
+              resolve({ ok: false, error: data.error || "Image generation failed" });
+            } else if (attempts >= maxAttempts) {
+              resolve({ ok: false, error: "Image generation timed out after 30 minutes" });
+            } else {
+              // Still pending/running, poll again
+              if (status) {
+                status.textContent = `Drawing panel ${panelNumber}… (${Math.round((attempts * pollInterval) / 1000)}s)`;
+              }
+              setTimeout(poll, pollInterval);
+            }
+          } catch (err) {
+            resolve({ ok: false, error: "Network error while checking status" });
+          }
+        };
+
+        poll();
+      });
+    }
 
     async function drawPanel(panelNumber) {
       const media = panelGrid.querySelector(`[data-panel-media="${panelNumber}"]`);
       const placeholder = media?.querySelector(".panel-placeholder");
       const status = media?.querySelector(".panel-status");
+
       if (placeholder) {
         placeholder.classList.add("is-drawing");
       }
       if (status) {
         status.textContent = `Drawing panel ${panelNumber}…`;
       }
-      const url = urlTemplate.replace("/panels/999/", `/panels/${panelNumber}/`);
+
+      if (!dreamId) {
+        if (status) {
+          status.textContent = "Could not determine dream ID.";
+        }
+        placeholder?.classList.remove("is-drawing");
+        return;
+      }
+
       try {
-        const response = await fetch(url, {
+        // Step 1: Queue the image generation task
+        const queueUrl = `/dreams/${dreamId}/panels/${panelNumber}/image/generate`;
+        const queueResponse = await fetch(queueUrl, {
           method: "POST",
           headers: { Accept: "application/json" },
         });
-        const data = await response.json();
-        if (data.ok && data.image_url && media) {
+        const queueData = await queueResponse.json();
+
+        if (!queueData.ok) {
+          throw new Error(queueData.error || "Failed to queue image generation");
+        }
+
+        // If image already exists (task_id is null), use it immediately
+        if (queueData.status === "completed") {
           const caption = media.getAttribute("data-caption") || "";
           const img = document.createElement("img");
           img.className = "panel-image";
           img.alt = `Comic panel ${panelNumber}: ${caption}`;
-          img.src = `${data.image_url}?v=${Date.now()}`;
+          img.src = `${queueData.image_url}?v=${Date.now()}`;
+          media.replaceChildren(img);
+          return;
+        }
+
+        const taskId = queueData.task_id;
+        if (!taskId) {
+          throw new Error("No task ID returned");
+        }
+
+        // Step 2: Poll for completion
+        const pollResult = await pollImageStatus(dreamId, panelNumber, taskId);
+
+        if (pollResult.ok && pollResult.image_url && media) {
+          const caption = media.getAttribute("data-caption") || "";
+          const img = document.createElement("img");
+          img.className = "panel-image";
+          img.alt = `Comic panel ${panelNumber}: ${caption}`;
+          img.src = `${pollResult.image_url}?v=${Date.now()}`;
           media.replaceChildren(img);
         } else if (status) {
-          status.textContent = data.error || "Could not draw this panel. Try Regenerate images.";
+          status.textContent = pollResult.error || "Could not draw this panel. Try Regenerate images.";
           placeholder?.classList.remove("is-drawing");
         }
-      } catch (_) {
+      } catch (err) {
         if (status) {
-          status.textContent = "Could not draw this panel. Try Regenerate images.";
+          status.textContent = `Error: ${err.message || "Could not draw this panel. Try Regenerate images."}`;
         }
         placeholder?.classList.remove("is-drawing");
       }
     }
 
-    Promise.allSettled(
-      pending.map((panelNumber) => drawPanel(panelNumber))
-        ).then((results) => {
-            console.log("All panel generation requests completed:", results);
-        });
+    pending.forEach((panelNumber) => {
+      drawPanel(panelNumber);
+    });
   }
 
   // Postcard PNG export (client-side canvas from the postcard card)

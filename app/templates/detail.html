@@ -86,7 +86,7 @@
     <div
       class="panel-grid"
       data-draw-panels
-      data-draw-url="{{ url_for('dreams.generate_panel_image', dream_id=dream.id, panel_number=999) }}"
+      data-dream-id="{{ dream.id }}"
       data-pending-panels="{{ pending_panels|join(',') }}"
     >
       {% for panel in analysis.panels %}
