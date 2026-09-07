@@ -24,6 +24,9 @@ def parse_analysis(analysis_row) -> AnalysisResult:
         if not isinstance(panel, dict):
             continue
         question = str(panel.get("reflection_question") or "").strip()
+        answer = panel.get("reflection_answer")
+        if answer:
+            answer = str(answer).strip() or None
         panels.append(
             Panel(
                 panel_number=int(panel.get("panel_number") or index),
@@ -31,6 +34,7 @@ def parse_analysis(analysis_row) -> AnalysisResult:
                 scene_description=str(panel.get("scene_description") or ""),
                 image_url=panel.get("image_url"),
                 reflection_question=question or fallback_reflection_question(index),
+                reflection_answer=answer,
             )
         )
     symbols_raw = []
