@@ -378,3 +378,44 @@ def _generate_panel_image_task(
     persist_panel_image_url(dream, panel_number=panel_number, image_url=image_url)
 
     return {"image_url": image_url}
+
+
+def save_reflection_answer(dream_id: int, panel_number: int):
+    """Save user's answer to a panel's reflection question."""
+    dream = get_owned_dream(dream_id)
+    if not dream.analysis:
+        return jsonify({"ok": False, "error": "No comic found."}), 404
+
+    answer_text = request.form.get("answer", "").strip()
+    if not answer_text:
+        return jsonify({"ok": False, "error": "Answer cannot be empty."}), 400
+
+    analysis = parse_analysis(dream.analysis)
+    for panel in analysis.panels:
+        if panel.panel_number == panel_number:
+            panel.reflection_answer = answer_text
+            break
+
+    persist_analysis_row(dream, analysis)
+    return jsonify({"ok": True, "panel_number": panel_number})
+
+
+def view_reflection_qa(dream_id: int, panel_number: int):
+    """View a shareable Q&A page (Tellonym style) - no auth required."""
+    dream = DreamEntry.query.get_or_404(dream_id)
+    if not dream.analysis:
+        flash("Dream not found or has no comic.", "error")
+        return redirect(url_for("dreams.home"))
+
+    analysis = parse_analysis(dream.analysis)
+    panel = next((p for p in analysis.panels if p.panel_number == panel_number), None)
+    if panel is None or not panel.reflection_question:
+        flash("Question not found for this panel.", "error")
+        return redirect(url_for("dreams.home"))
+
+    return render_template(
+        "qa_share.html",
+        dream=dream,
+        panel=panel,
+        dream_title=analysis.title if analysis else f"Dream #{dream.id}",
+    )

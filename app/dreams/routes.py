@@ -89,3 +89,16 @@ def check_image_generation_status(dream_id: int, panel_number: int, task_id: str
 @login_required
 def delete_dream(dream_id: int):
     return views.delete_dream(dream_id)
+
+
+@bp.post("/dreams/<int:dream_id>/panels/<int:panel_number>/answer")
+@login_required
+def save_reflection_answer(dream_id: int, panel_number: int):
+    """Save user's answer to a reflection question."""
+    return views.save_reflection_answer(dream_id, panel_number)
+
+
+@bp.get("/dreams/<int:dream_id>/panels/<int:panel_number>/qa")
+def view_reflection_qa(dream_id: int, panel_number: int):
+    """View shareable Q&A page (Tellonym style) - no login required."""
+    return views.view_reflection_qa(dream_id, panel_number)

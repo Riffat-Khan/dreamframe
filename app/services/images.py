@@ -73,7 +73,7 @@ def _extension_for_bytes(data: bytes) -> str:
     return "jpg"
 
 
-def _generate_pollinations(*, prompt: str, out_path: Path, save_to_disk: bool = True) -> Path | str:
+def _generate_pollinations(*, prompt: str, out_path: Path, save_to_disk: bool = True, dream_id: int = None, panel_number: int = None) -> Path | str:
     """
     Free anonymous Pollinations images (no signup). ~1 request / 15–20s.
 
@@ -81,15 +81,25 @@ def _generate_pollinations(*, prompt: str, out_path: Path, save_to_disk: bool = 
         prompt: Image generation prompt
         out_path: Path to save to (only used if save_to_disk=True)
         save_to_disk: If False, returns direct image URL instead of saving
+        dream_id: Optional dream ID for deterministic seed
+        panel_number: Optional panel number for deterministic seed
 
     Returns:
         Path object (if save_to_disk=True) or URL string (if save_to_disk=False)
     """
     encoded = quote(prompt[:450])
+
+    # Use deterministic seed so Pollinations caches the same image for the same panel
+    # This prevents URL expiration issues - same prompt = same seed = Pollinations returns cached image
+    if dream_id is not None and panel_number is not None:
+        seed = (dream_id * 1000 + panel_number) % 100000
+    else:
+        seed = int(time.time()) % 100000
+
     # Anonymous free endpoint — do NOT use gen.pollinations.ai without pollen balance.
     image_url = (
         f"https://image.pollinations.ai/prompt/{encoded}"
-        f"?width=768&height=768&nologo=true&model=flux&seed={int(time.time()) % 100000}"
+        f"?width=768&height=768&nologo=true&model=flux&seed={seed}"
     )
 
     # If not saving to disk (production), return the URL directly
@@ -106,10 +116,21 @@ def _generate_pollinations(*, prompt: str, out_path: Path, save_to_disk: bool = 
         for attempt in range(4):
             response = client.get(image_url, headers=headers)
             if response.status_code in {402, 429}:
-                wait_for = max(int(response.headers.get("Retry-After", 20)), 20)
+                # Rate limited - use exponential backoff capped to avoid Vercel timeout
+                # On production (Vercel), be more aggressive with retry timing
+                is_production = os.getenv("VERCEL") or os.getenv("NODE_ENV") == "production"
+                if is_production:
+                    # On Vercel: Use shorter waits to stay within 60s timeout
+                    # Attempt 1: 3s, Attempt 2: 6s, Attempt 3: 12s (total ~21s)
+                    wait_for = min(3 * (2 ** attempt), 15)
+                else:
+                    # Local: Can use longer waits
+                    wait_for = max(int(response.headers.get("Retry-After", 20)), 20)
+
                 current_app.logger.warning(
-                    "Free image API busy (attempt %s). Waiting %ss…",
+                    "Free image API rate limited (attempt %s/%s). Waiting %ss…",
                     attempt + 1,
+                    4,
                     wait_for,
                 )
                 time.sleep(wait_for)
@@ -119,7 +140,8 @@ def _generate_pollinations(*, prompt: str, out_path: Path, save_to_disk: bool = 
             data = response.content
             if len(data) < 2000:
                 last_error = RuntimeError("image too small / invalid")
-                time.sleep(12)
+                # Shorter sleep for invalid responses
+                time.sleep(5)
                 continue
             ext = _extension_for_bytes(data)
             final_path = out_path.with_suffix(f".{ext}")
@@ -180,7 +202,7 @@ def _generate_huggingface(*, prompt: str, out_path: Path, save_to_disk: bool = T
     raise RuntimeError("Hugging Face image generation failed")
 
 
-def _generate_one_image(*, prompt: str, out_path: Path, save_to_disk: bool = True) -> Path | str:
+def _generate_one_image(*, prompt: str, out_path: Path, save_to_disk: bool = True, dream_id: int = None, panel_number: int = None) -> Path | str:
     """
     Generate a single image. Returns either a file Path (if saved) or URL string.
 
@@ -189,18 +211,20 @@ def _generate_one_image(*, prompt: str, out_path: Path, save_to_disk: bool = Tru
         out_path: Path to save to (only used if save_to_disk=True)
         save_to_disk: If True, saves to disk and returns Path.
                       If False, returns direct image URL (Pollinations only).
+        dream_id: Optional dream ID for deterministic seed
+        panel_number: Optional panel number for deterministic seed
     """
     provider = (current_app.config.get("IMAGE_PROVIDER") or "pollinations").lower()
     if provider == "huggingface":
         return _generate_huggingface(prompt=prompt, out_path=out_path, save_to_disk=save_to_disk)
     if provider == "auto":
         try:
-            return _generate_pollinations(prompt=prompt, out_path=out_path, save_to_disk=save_to_disk)
+            return _generate_pollinations(prompt=prompt, out_path=out_path, save_to_disk=save_to_disk, dream_id=dream_id, panel_number=panel_number)
         except Exception as exc:  # noqa: BLE001
             current_app.logger.warning("Pollinations failed, trying HF: %s", exc)
             return _generate_huggingface(prompt=prompt, out_path=out_path, save_to_disk=save_to_disk)
     # Default free platform
-    return _generate_pollinations(prompt=prompt, out_path=out_path, save_to_disk=save_to_disk)
+    return _generate_pollinations(prompt=prompt, out_path=out_path, save_to_disk=save_to_disk, dream_id=dream_id, panel_number=panel_number)
 
 
 def generate_one_panel_image(
@@ -238,11 +262,11 @@ def generate_one_panel_image(
 
     try:
         prompt = _build_scenic_prompt(target, style=style, dream_text=dream_text)
-        result = _generate_one_image(prompt=prompt, out_path=base, save_to_disk=save_to_disk)
+        result = _generate_one_image(prompt=prompt, out_path=base, save_to_disk=save_to_disk, dream_id=dream_id, panel_number=panel_number)
 
         # Handle both Path and string URL returns
         if isinstance(result, Path):
-            # File was saved locally
+            # File was saved locally (development)
             # Build URL manually to avoid needing request context (we're in a worker thread)
             image_url = f"/static/generated/{result.name}"
             current_app.logger.info(
@@ -271,6 +295,7 @@ def generate_one_panel_image(
                     scene_description=panel.scene_description,
                     image_url=image_url,
                     reflection_question=panel.reflection_question,
+                    reflection_answer=panel.reflection_answer,
                 )
             )
         else:

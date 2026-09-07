@@ -15,6 +15,7 @@ class Panel:
     scene_description: str
     image_url: str | None = None
     reflection_question: str | None = None
+    reflection_answer: str | None = None
 
 
 @dataclass

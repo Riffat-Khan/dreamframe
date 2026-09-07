@@ -109,7 +109,15 @@
           </div>
           <p class="panel-caption">{{ panel.caption }}</p>
           {% if panel.reflection_question %}
-            <p class="panel-question">{{ panel.reflection_question }}</p>
+            <button
+              class="panel-question-btn"
+              data-panel-num="{{ panel.panel_number }}"
+              data-question="{{ panel.reflection_question | replace('&', '&amp;') | replace('<', '&lt;') | replace('>', '&gt;') | replace('"', '&quot;') }}"
+              data-answer="{{ (panel.reflection_answer or '') | replace('&', '&amp;') | replace('<', '&lt;') | replace('>', '&gt;') | replace('"', '&quot;') }}"
+              title="Click to answer or view"
+            >
+              💭 <strong>Question:</strong> {{ panel.reflection_question }}
+            </button>
           {% endif %}
           <p class="panel-scene panel-scene-small">{{ panel.scene_description }}</p>
         </article>
@@ -127,4 +135,273 @@
     {% endif %}
   </details>
 </section>
+
+<!-- Q&A Modal -->
+<div id="qaModal" class="modal-overlay">
+  <div class="modal-content">
+    <button class="modal-close" onclick="closeQAModal()">✕</button>
+
+    <div class="modal-question">
+      <p class="modal-label">Question</p>
+      <p class="modal-question-text" id="modalQuestion"></p>
+    </div>
+
+    <div class="modal-form">
+      <label>Your Answer</label>
+      <textarea
+        id="answerInput"
+        placeholder="Share your thoughts about this question…"
+        rows="6"
+      ></textarea>
+
+      <div class="modal-actions">
+        <button class="btn btn-primary" onclick="saveAnswer()">Save Answer</button>
+        <a id="shareLink" class="btn btn-secondary" target="_blank">Share Q&A</a>
+        <button class="btn btn-secondary" onclick="closeQAModal()">Close</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<style>
+  .modal-overlay {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 1000;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    animation: fadeIn 0.2s ease-out;
+  }
+
+  .modal-overlay.active {
+    display: flex;
+  }
+
+  @keyframes fadeIn {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+
+  .modal-content {
+    background: white;
+    border-radius: 12px;
+    max-width: 500px;
+    width: 100%;
+    padding: 30px;
+    position: relative;
+    animation: slideUp 0.3s ease-out;
+    max-height: 80vh;
+    overflow-y: auto;
+  }
+
+  @keyframes slideUp {
+    from {
+      opacity: 0;
+      transform: translateY(20px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  .modal-close {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    background: none;
+    border: none;
+    font-size: 24px;
+    cursor: pointer;
+    color: #999;
+    padding: 0;
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 6px;
+    transition: all 0.2s ease;
+  }
+
+  .modal-close:hover {
+    background: #f0f0f0;
+    color: #333;
+  }
+
+  .modal-question {
+    background: #f8f8f8;
+    border-radius: 8px;
+    padding: 20px;
+    margin-bottom: 24px;
+  }
+
+  .modal-label {
+    font-size: 12px;
+    text-transform: uppercase;
+    color: #999;
+    letter-spacing: 0.5px;
+    margin-bottom: 8px;
+    font-weight: 600;
+  }
+
+  .modal-question-text {
+    font-size: 16px;
+    font-weight: 600;
+    color: #333;
+    line-height: 1.5;
+  }
+
+  .modal-form label {
+    display: block;
+    font-size: 14px;
+    font-weight: 600;
+    color: #333;
+    margin-bottom: 8px;
+  }
+
+  #answerInput {
+    width: 100%;
+    padding: 12px;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    font-family: inherit;
+    font-size: 14px;
+    resize: vertical;
+    transition: border-color 0.2s ease;
+  }
+
+  #answerInput:focus {
+    outline: none;
+    border-color: #667eea;
+    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+  }
+
+  .modal-actions {
+    display: flex;
+    gap: 10px;
+    margin-top: 20px;
+  }
+
+  .modal-actions .btn {
+    flex: 1;
+    padding: 10px 16px;
+    font-size: 13px;
+  }
+
+  .panel-question-btn {
+    width: 100%;
+    background: none;
+    border: 1px solid #e0e0e0;
+    padding: 12px;
+    border-radius: 8px;
+    font-size: 14px;
+    color: #333;
+    cursor: pointer;
+    text-align: left;
+    transition: all 0.2s ease;
+    font-weight: 500;
+  }
+
+  .panel-question-btn:hover {
+    background: #f8f8f8;
+    border-color: #667eea;
+    color: #667eea;
+  }
+
+  @media (max-width: 600px) {
+    .modal-content {
+      padding: 20px;
+    }
+
+    .modal-actions {
+      flex-direction: column;
+    }
+
+    .modal-actions .btn {
+      width: 100%;
+    }
+  }
+</style>
+
+<script>
+  const DREAM_ID = document.querySelector('[data-draw-panels]').dataset.dreamId;
+  let currentPanelNumber = null;
+  let currentQuestion = null;
+
+  function openQAModal(btn) {
+    const panelNum = btn.dataset.panelNum;
+    const question = btn.dataset.question || '';
+    const answer = btn.dataset.answer || '';
+
+    currentPanelNumber = panelNum;
+    currentQuestion = question;
+
+    document.getElementById('modalQuestion').textContent = question;
+    document.getElementById('answerInput').value = answer || '';
+
+    // Set up share link
+    const shareUrl = `/dreams/${DREAM_ID}/panels/${panelNum}/qa`;
+    document.getElementById('shareLink').href = shareUrl;
+
+    document.getElementById('qaModal').classList.add('active');
+  }
+
+  function closeQAModal() {
+    document.getElementById('qaModal').classList.remove('active');
+  }
+
+  function saveAnswer() {
+    const answer = document.getElementById('answerInput').value.trim();
+    if (!answer) {
+      alert('Please write an answer before saving.');
+      return;
+    }
+
+    const form = new FormData();
+    form.append('answer', answer);
+
+    fetch(`/dreams/${DREAM_ID}/panels/${currentPanelNumber}/answer`, {
+      method: 'POST',
+      body: form,
+    })
+      .then(res => res.json())
+      .then(data => {
+        if (data.ok) {
+          alert('Answer saved! 💭');
+          closeQAModal();
+          // Reload to sync database changes
+          setTimeout(() => location.reload(), 500);
+        } else {
+          alert(`Error: ${data.error}`);
+        }
+      })
+      .catch(err => {
+        console.error('Error:', err);
+        alert('Failed to save answer.');
+      });
+  }
+
+  // Add event listeners to question buttons
+  document.querySelectorAll('.panel-question-btn').forEach(btn => {
+    btn.addEventListener('click', () => openQAModal(btn));
+  });
+
+  // Close modal on Escape key
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && document.getElementById('qaModal').classList.contains('active')) {
+      closeQAModal();
+    }
+  });
+</script>
 {% endblock %}
