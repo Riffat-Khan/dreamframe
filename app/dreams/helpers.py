@@ -59,7 +59,7 @@ def persist_analysis_row(entry: DreamEntry, analysis) -> None:
 
 
 def save_analysis(entry: DreamEntry, analysis, *, with_images: bool = False) -> int:
-    """Persist comic text. Images are drawn in parallel from the detail page."""
+    """Persist comic text. Images are drawn one at a time from the detail page."""
     if not with_images:
         delete_dream_images(entry.id)
         for panel in analysis.panels:

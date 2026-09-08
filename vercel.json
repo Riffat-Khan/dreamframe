@@ -1,8 +1,13 @@
 {
-  "$schema": "https://openapi.vercel.sh/vercel.json",
-  "buildCommand": "pip install -r requirements.txt",
-  "devCommand": "python run.py",
-  "env": {
-    "PYTHONUNBUFFERED": "1"
-  }
+    "$schema": "https://openapi.vercel.sh/vercel.json",
+    "buildCommand": "pip install -r requirements.txt",
+    "devCommand": "python run.py",
+    "env": {
+        "PYTHONUNBUFFERED": "1"
+    },
+    "functions": {
+        "run.py": {
+            "maxDuration": 60
+        }
+    }
 }

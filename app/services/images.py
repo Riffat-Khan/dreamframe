@@ -102,27 +102,31 @@ def _generate_pollinations(*, prompt: str, out_path: Path, save_to_disk: bool = 
         f"?width=768&height=768&nologo=true&model=flux&seed={seed}"
     )
 
-    # If not saving to disk (production), return the URL directly
-    if not save_to_disk:
-        return image_url
-
+    # Always fetch + validate here, even when not saving to disk — this warms
+    # Pollinations' cache for the deterministic seed so the browser's own
+    # request lands on a cache hit instead of a fresh, rate-limited generation.
     headers = {
         "User-Agent": "Mozilla/5.0 Dreamframe/1.0",
         "Accept": "image/jpeg,image/png,image/*",
     }
+    is_production = bool(os.getenv("VERCEL") or os.getenv("NODE_ENV") == "production")
+    max_attempts = 3 if is_production else 4
+
+    # 402/429 = real rate limit (longer wait); 5xx = transient backend hiccup (shorter wait).
+    rate_limit_statuses = {402, 429}
+    transient_server_statuses = {500, 502, 503, 504}
 
     last_error: Exception | None = None
-    with httpx.Client(timeout=120.0, follow_redirects=True) as client:
-        for attempt in range(4):
+    with httpx.Client(timeout=45.0, follow_redirects=True) as client:
+        for attempt in range(max_attempts):
             response = client.get(image_url, headers=headers)
-            if response.status_code in {402, 429}:
+            if response.status_code in rate_limit_statuses:
                 # Rate limited - use exponential backoff capped to avoid Vercel timeout
                 # On production (Vercel), be more aggressive with retry timing
-                is_production = os.getenv("VERCEL") or os.getenv("NODE_ENV") == "production"
                 if is_production:
-                    # On Vercel: Use shorter waits to stay within 60s timeout
+                    # On Vercel: Use shorter waits to stay within the function timeout
                     # Attempt 1: 3s, Attempt 2: 6s, Attempt 3: 12s (total ~21s)
-                    wait_for = min(3 * (2 ** attempt), 15)
+                    wait_for = min(3 * (2 ** attempt), 12)
                 else:
                     # Local: Can use longer waits
                     wait_for = max(int(response.headers.get("Retry-After", 20)), 20)
@@ -130,11 +134,23 @@ def _generate_pollinations(*, prompt: str, out_path: Path, save_to_disk: bool = 
                 current_app.logger.warning(
                     "Free image API rate limited (attempt %s/%s). Waiting %ss…",
                     attempt + 1,
-                    4,
+                    max_attempts,
                     wait_for,
                 )
                 time.sleep(wait_for)
                 last_error = RuntimeError(f"rate limited ({response.status_code})")
+                continue
+            if response.status_code in transient_server_statuses:
+                wait_for = min(3 * (2 ** attempt), 10) if is_production else 8
+                current_app.logger.warning(
+                    "Free image API returned %s (attempt %s/%s). Waiting %ss…",
+                    response.status_code,
+                    attempt + 1,
+                    max_attempts,
+                    wait_for,
+                )
+                time.sleep(wait_for)
+                last_error = RuntimeError(f"server error ({response.status_code})")
                 continue
             response.raise_for_status()
             data = response.content
@@ -143,6 +159,10 @@ def _generate_pollinations(*, prompt: str, out_path: Path, save_to_disk: bool = 
                 # Shorter sleep for invalid responses
                 time.sleep(5)
                 continue
+
+            if not save_to_disk:
+                return image_url
+
             ext = _extension_for_bytes(data)
             final_path = out_path.with_suffix(f".{ext}")
             final_path.write_bytes(data)

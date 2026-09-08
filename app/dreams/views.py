@@ -50,7 +50,7 @@ def create_dream():
 
     save_analysis(entry, analysis)
     flash_mock_ai_notice_if_needed()
-    flash("Comic ready — drawing all three scenic panels at once.", "info")
+    flash("Comic ready — drawing the scenic panels one by one.", "info")
     return redirect(url_for("dreams.dream_detail", dream_id=entry.id))
 
 
@@ -151,7 +151,7 @@ def update_dream(dream_id: int):
             style=style,
         )
         save_analysis(dream, analysis)
-        flash("Dream updated. Drawing scenic panels in parallel.", "info")
+        flash("Dream updated. Drawing scenic panels one by one.", "info")
     else:
         flash("Dream text saved. Use Regenerate to rebuild the comic.", "info")
 
@@ -166,7 +166,7 @@ def regenerate_dream(dream_id: int):
         style=dream.style,
     )
     save_analysis(dream, analysis)
-    flash("Comic regenerated. Drawing scenic panels in parallel.", "info")
+    flash("Comic regenerated. Drawing scenic panels one by one.", "info")
     return redirect(url_for("dreams.dream_detail", dream_id=dream.id))
 
 
@@ -181,7 +181,7 @@ def regenerate_images(dream_id: int):
         panel.image_url = None
     delete_dream_images(dream.id)
     persist_analysis_row(dream, analysis)
-    flash("Redrawing scenic panels in parallel.", "info")
+    flash("Redrawing scenic panels one by one.", "info")
     return redirect(url_for("dreams.dream_detail", dream_id=dream.id))
 
 

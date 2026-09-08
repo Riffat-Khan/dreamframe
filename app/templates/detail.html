@@ -36,7 +36,7 @@
       </form>
     </div>
     <p class="muted form-hint">
-      Pictures start drawing at the same time. Whichever panel finishes first appears first.
+      Pictures draw one at a time on the free image API — each panel can take 15-30s.
     </p>
 
     {% if dream_symbols %}
@@ -96,7 +96,7 @@
             {% if panel.image_url %}
               <img
                 class="panel-image"
-                src="{{ panel.image_url }}?v={{ dream.id }}-{{ panel.panel_number }}"
+                src="{{ cache_bust(panel.image_url, dream.id ~ '-' ~ panel.panel_number) }}"
                 alt="Comic panel {{ panel.panel_number }}: {{ panel.caption }}"
                 loading="lazy"
               />

@@ -5,6 +5,14 @@ from app.config import BASE_DIR, Config
 from app.extensions import db
 
 
+def cache_bust(url: str | None, token: object) -> str | None:
+    """Bust cache only for URLs with no existing query string — busting a
+    Pollinations URL would corrupt its seed param and defeat its cache."""
+    if not url or "?" in url:
+        return url
+    return f"{url}?v={token}"
+
+
 def _ensure_column(table: str, column: str, ddl: str) -> None:
     inspector = inspect(db.engine)
     if table not in inspector.get_table_names():
@@ -19,6 +27,7 @@ def _ensure_column(table: str, column: str, ddl: str) -> None:
 def create_app(config_class: type[Config] = Config) -> Flask:
     app = Flask(__name__)
     app.config.from_object(config_class)
+    app.jinja_env.globals["cache_bust"] = cache_bust
 
     (BASE_DIR / "data").mkdir(parents=True, exist_ok=True)
 
