@@ -45,7 +45,7 @@
 
         function loadImageWithRetry(media, panelNumber, imageUrl, caption) {
             const status = media?.querySelector(".panel-status");
-            const delays = [4000, 8000, 16000]; // free API is rate-limited; back off between retries
+            const delays = [4000, 8000, 16000, 20000, 20000]; // free API is rate-limited; back off between retries
 
             return new Promise((resolve) => {
                 let attempt = 0;
