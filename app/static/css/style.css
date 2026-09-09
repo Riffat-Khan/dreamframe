@@ -594,6 +594,11 @@ body.is-loading {
   cursor: default;
 }
 
+.panel-regen-btn.regen-failed {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
 .journal-list {
   display: grid;
   gap: 0.8rem;

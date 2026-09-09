@@ -16,7 +16,7 @@ from app.extensions import db
 from app.models import DreamAnalysis, DreamEntry, DreamSymbol, DreamSymbolLink
 from app.services.ai import generate_dream_analysis
 from app.services.analysis_utils import analysis_to_storage, parse_analysis
-from app.services.images import delete_dream_images, delete_panel_image, generate_one_panel_image
+from app.services.images import delete_dream_images, generate_one_panel_image
 from app.services.postcard import build_postcard_svg
 from app.services.task_queue import get_task_queue
 
@@ -97,6 +97,7 @@ def dream_detail(dream_id: int):
         analysis=analysis,
         dream_symbols=dream_symbols,
         pending_panels=pending_panels,
+        fresh_images=request.args.get("fresh") == "1",
     )
 
 
@@ -182,7 +183,7 @@ def regenerate_images(dream_id: int):
     delete_dream_images(dream.id)
     persist_analysis_row(dream, analysis)
     flash("Redrawing scenic panels one by one.", "info")
-    return redirect(url_for("dreams.dream_detail", dream_id=dream.id))
+    return redirect(url_for("dreams.dream_detail", dream_id=dream.id, fresh=1))
 
 
 def generate_panel_image(dream_id: int, panel_number: int):
@@ -233,7 +234,7 @@ def delete_dream(dream_id: int):
     return redirect(url_for("dreams.journal"))
 
 
-def queue_panel_image_generation(dream_id: int, panel_number: int):
+def queue_panel_image_generation(dream_id: int, panel_number: int, new_variant: bool = False):
     """Queue an async image generation task. Returns immediately with task ID."""
     dream = get_owned_dream(dream_id)
     if not dream.analysis:
@@ -244,7 +245,7 @@ def queue_panel_image_generation(dream_id: int, panel_number: int):
     if existing is None:
         return jsonify({"ok": False, "error": "Panel not found."}), 404
 
-    if existing.image_url:
+    if existing.image_url and not new_variant:
         # Image already exists, return immediately
         return jsonify({
             "ok": True,
@@ -265,7 +266,8 @@ def queue_panel_image_generation(dream_id: int, panel_number: int):
                 style=dream.style,
                 dream_text=dream.original_text,
                 panel_number=panel_number,
-                force=False,
+                force=new_variant,
+                new_variant=new_variant,
             )
             if image_url:
                 persist_panel_image_url(dream, panel_number=panel_number, image_url=image_url)
@@ -296,6 +298,7 @@ def queue_panel_image_generation(dream_id: int, panel_number: int):
         style=dream.style,
         dream_text=dream.original_text,
         user_id=g.user.id,
+        new_variant=new_variant,
     )
 
     return jsonify({
@@ -307,7 +310,8 @@ def queue_panel_image_generation(dream_id: int, panel_number: int):
 
 
 def regenerate_panel_image(dream_id: int, panel_number: int):
-    """Clear one panel's image and redraw just that panel."""
+    """Redraw one panel with a new picture — the existing image (in the DB and
+    on screen) is left untouched unless and until the new one actually succeeds."""
     dream = get_owned_dream(dream_id)
     if not dream.analysis:
         return jsonify({"ok": False, "error": "No comic to illustrate."}), 404
@@ -317,9 +321,7 @@ def regenerate_panel_image(dream_id: int, panel_number: int):
     if existing is None:
         return jsonify({"ok": False, "error": "Panel not found."}), 404
 
-    delete_panel_image(dream.id, panel_number)
-    persist_panel_image_url(dream, panel_number=panel_number, image_url=None)
-    return queue_panel_image_generation(dream_id, panel_number)
+    return queue_panel_image_generation(dream_id, panel_number, new_variant=True)
 
 
 def check_image_generation_status(dream_id: int, panel_number: int, task_id: str):
@@ -359,6 +361,7 @@ def _generate_panel_image_task(
     style: str,
     dream_text: str,
     user_id: int,
+    new_variant: bool = False,
 ) -> dict:
     """
     Background task function for generating a panel image.
@@ -384,7 +387,8 @@ def _generate_panel_image_task(
         style=style,
         dream_text=dream_text,
         panel_number=panel_number,
-        force=False,
+        force=new_variant,
+        new_variant=new_variant,
     )
 
     if error or not image_url:
