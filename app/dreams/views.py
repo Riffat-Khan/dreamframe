@@ -16,7 +16,7 @@ from app.extensions import db
 from app.models import DreamAnalysis, DreamEntry, DreamSymbol, DreamSymbolLink
 from app.services.ai import generate_dream_analysis
 from app.services.analysis_utils import analysis_to_storage, parse_analysis
-from app.services.images import delete_dream_images, generate_one_panel_image
+from app.services.images import delete_dream_images, delete_panel_image, generate_one_panel_image
 from app.services.postcard import build_postcard_svg
 from app.services.task_queue import get_task_queue
 
@@ -304,6 +304,22 @@ def queue_panel_image_generation(dream_id: int, panel_number: int):
         "panel_number": panel_number,
         "status": "queued"
     }), 202
+
+
+def regenerate_panel_image(dream_id: int, panel_number: int):
+    """Clear one panel's image and redraw just that panel."""
+    dream = get_owned_dream(dream_id)
+    if not dream.analysis:
+        return jsonify({"ok": False, "error": "No comic to illustrate."}), 404
+
+    analysis = parse_analysis(dream.analysis)
+    existing = next((p for p in analysis.panels if p.panel_number == panel_number), None)
+    if existing is None:
+        return jsonify({"ok": False, "error": "Panel not found."}), 404
+
+    delete_panel_image(dream.id, panel_number)
+    persist_panel_image_url(dream, panel_number=panel_number, image_url=None)
+    return queue_panel_image_generation(dream_id, panel_number)
 
 
 def check_image_generation_status(dream_id: int, panel_number: int, task_id: str):

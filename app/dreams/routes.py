@@ -85,6 +85,13 @@ def check_image_generation_status(dream_id: int, panel_number: int, task_id: str
     return views.check_image_generation_status(dream_id, panel_number, task_id)
 
 
+@bp.post("/dreams/<int:dream_id>/panels/<int:panel_number>/image/regenerate")
+@login_required
+def regenerate_panel_image(dream_id: int, panel_number: int):
+    """Redraw a single panel without touching the other two."""
+    return views.regenerate_panel_image(dream_id, panel_number)
+
+
 @bp.post("/dreams/<int:dream_id>/delete")
 @login_required
 def delete_dream(dream_id: int):

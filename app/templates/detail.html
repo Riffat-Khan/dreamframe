@@ -107,6 +107,15 @@
               </div>
             {% endif %}
           </div>
+          {% if panel.image_url %}
+            <button
+              type="button"
+              class="panel-regen-btn"
+              data-regenerate-panel="{{ panel.panel_number }}"
+            >
+              ↻ Regenerate this panel
+            </button>
+          {% endif %}
           <p class="panel-caption">{{ panel.caption }}</p>
           {% if panel.reflection_question %}
             <button
@@ -306,11 +315,11 @@
     padding: 12px;
     border-radius: 8px;
     font-size: 14px;
-    color: #333;
+    color: var(--accent);
     cursor: pointer;
     text-align: left;
     transition: all 0.2s ease;
-    font-weight: 500;
+    font-weight: 700;
   }
 
   .panel-question-btn:hover {

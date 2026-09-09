@@ -128,29 +128,32 @@
             });
         }
 
-        async function drawPanel(panelNumber) {
-            const media = panelGrid.querySelector(`[data-panel-media="${panelNumber}"]`);
-            const placeholder = media?.querySelector(".panel-placeholder");
-            const status = media?.querySelector(".panel-status");
+        function showPanelPlaceholder(media, message) {
+            const placeholder = document.createElement("div");
+            placeholder.className = "panel-placeholder is-drawing";
+            const status = document.createElement("p");
+            status.className = "muted panel-scene-small panel-status";
+            status.textContent = message;
+            placeholder.appendChild(status);
+            media.replaceChildren(placeholder);
+        }
 
-            if (placeholder) {
-                placeholder.classList.add("is-drawing");
-            }
+        async function runPanelJob(panelNumber, queueUrl) {
+            const media = panelGrid.querySelector(`[data-panel-media="${panelNumber}"]`);
+            if (!media) return;
+            const placeholder = media.querySelector(".panel-placeholder");
+            let status = media.querySelector(".panel-status");
             if (status) {
                 status.textContent = `Drawing panel ${panelNumber}…`;
             }
 
             if (!dreamId) {
-                if (status) {
-                    status.textContent = "Could not determine dream ID.";
-                }
+                if (status) status.textContent = "Could not determine dream ID.";
                 placeholder?.classList.remove("is-drawing");
                 return;
             }
 
             try {
-                // Step 1: Queue the image generation task
-                const queueUrl = `/dreams/${dreamId}/panels/${panelNumber}/image/generate`;
                 const queueResponse = await fetch(queueUrl, {
                     method: "POST",
                     headers: { Accept: "application/json" },
@@ -162,41 +165,43 @@
                 }
 
                 const caption = media.getAttribute("data-caption") || "";
+                let imageUrl = queueData.image_url;
 
-                // If image already exists (task_id is null), use it immediately
-                if (queueData.status === "completed") {
-                    const loaded = await loadImageWithRetry(media, panelNumber, queueData.image_url, caption);
-                    if (!loaded && status) {
-                        status.textContent = "Could not draw this panel (rate limited). Try Regenerate images.";
-                        placeholder?.classList.remove("is-drawing");
+                if (queueData.status !== "completed") {
+                    if (!queueData.task_id) {
+                        throw new Error("No task ID returned");
                     }
-                    return;
+                    const pollResult = await pollImageStatus(dreamId, panelNumber, queueData.task_id);
+                    if (!pollResult.ok || !pollResult.image_url) {
+                        status = media.querySelector(".panel-status");
+                        if (status) status.textContent = pollResult.error || "Could not draw this panel. Try again.";
+                        media.querySelector(".panel-placeholder")?.classList.remove("is-drawing");
+                        return;
+                    }
+                    imageUrl = pollResult.image_url;
                 }
 
-                const taskId = queueData.task_id;
-                if (!taskId) {
-                    throw new Error("No task ID returned");
-                }
-
-                // Step 2: Poll for completion
-                const pollResult = await pollImageStatus(dreamId, panelNumber, taskId);
-
-                if (pollResult.ok && pollResult.image_url && media) {
-                    const loaded = await loadImageWithRetry(media, panelNumber, pollResult.image_url, caption);
-                    if (!loaded && status) {
-                        status.textContent = "Could not draw this panel (rate limited). Try Regenerate images.";
-                        placeholder?.classList.remove("is-drawing");
-                    }
-                } else if (status) {
-                    status.textContent = pollResult.error || "Could not draw this panel. Try Regenerate images.";
-                    placeholder?.classList.remove("is-drawing");
+                const loaded = await loadImageWithRetry(media, panelNumber, imageUrl, caption);
+                if (!loaded) {
+                    showPanelPlaceholder(media, "Could not draw this panel (rate limited). Try again.");
                 }
             } catch (err) {
-                if (status) {
-                    status.textContent = `Error: ${err.message || "Could not draw this panel. Try Regenerate images."}`;
-                }
-                placeholder?.classList.remove("is-drawing");
+                showPanelPlaceholder(media, `Error: ${err.message || "Could not draw this panel."}`);
             }
+        }
+
+        function drawPanel(panelNumber) {
+            return runPanelJob(panelNumber, `/dreams/${dreamId}/panels/${panelNumber}/image/generate`);
+        }
+
+        function regeneratePanel(panelNumber, button) {
+            const media = panelGrid.querySelector(`[data-panel-media="${panelNumber}"]`);
+            if (!media) return Promise.resolve();
+            showPanelPlaceholder(media, `Redrawing panel ${panelNumber}…`);
+            if (button) button.disabled = true;
+            return runPanelJob(panelNumber, `/dreams/${dreamId}/panels/${panelNumber}/image/regenerate`).finally(() => {
+                if (button) button.disabled = false;
+            });
         }
 
         // Sequential, not Promise.all — the free image API rate-limits concurrent requests.
@@ -205,6 +210,26 @@
                 await drawPanel(panelNumber);
             }
         })();
+
+        panelGrid.querySelectorAll("[data-regenerate-panel]").forEach((button) => {
+            button.addEventListener("click", () => {
+                regeneratePanel(button.getAttribute("data-regenerate-panel"), button);
+            });
+        });
+
+        // A panel that already rendered can still fail on a later page load
+        // (free API hiccup) — retry it once automatically through the same path.
+        panelGrid.querySelectorAll("img.panel-image").forEach((img) => {
+            img.addEventListener(
+                "error",
+                () => {
+                    const media = img.closest("[data-panel-media]");
+                    const panelNumber = media?.getAttribute("data-panel-media");
+                    if (panelNumber) regeneratePanel(panelNumber);
+                },
+                { once: true }
+            );
+        });
     }
 
     // Postcard PNG export (client-side canvas from the postcard card)
