@@ -37,6 +37,7 @@
             .map((item) => item.trim())
             .filter(Boolean);
         const dreamId = panelGrid.getAttribute("data-dream-id") || "";
+        const freshImages = panelGrid.getAttribute("data-new-variant") === "1";
 
         function withCacheBust(url, token) {
             if (!url) return url;
@@ -138,18 +139,39 @@
             media.replaceChildren(placeholder);
         }
 
-        async function runPanelJob(panelNumber, queueUrl) {
+        function flashRegenerateError(panelNumber, message) {
+            const card = panelGrid.querySelector(`[data-panel-media="${panelNumber}"]`)?.closest(".panel-card");
+            const btn = card?.querySelector(`[data-regenerate-panel="${panelNumber}"]`);
+            if (!btn) return;
+            btn.title = message;
+            btn.classList.add("regen-failed");
+            setTimeout(() => btn.classList.remove("regen-failed"), 3000);
+        }
+
+        async function runPanelJob(panelNumber, queueUrl, { keepCurrentOnFailure = false } = {}) {
             const media = panelGrid.querySelector(`[data-panel-media="${panelNumber}"]`);
             if (!media) return;
-            const placeholder = media.querySelector(".panel-placeholder");
+            // If there's already a good image showing, never destroy it until
+            // a replacement has actually succeeded — a failed regenerate falls
+            // back to what was already there instead of leaving a blank panel.
+            const fallbackHtml = keepCurrentOnFailure ? media.innerHTML : null;
+
+            function fail(message) {
+                if (fallbackHtml !== null) {
+                    media.innerHTML = fallbackHtml;
+                    flashRegenerateError(panelNumber, message);
+                } else {
+                    showPanelPlaceholder(media, message);
+                }
+            }
+
             let status = media.querySelector(".panel-status");
             if (status) {
                 status.textContent = `Drawing panel ${panelNumber}…`;
             }
 
             if (!dreamId) {
-                if (status) status.textContent = "Could not determine dream ID.";
-                placeholder?.classList.remove("is-drawing");
+                fail("Could not determine dream ID.");
                 ensureRegenerateButton(media, panelNumber);
                 return;
             }
@@ -174,9 +196,7 @@
                     }
                     const pollResult = await pollImageStatus(dreamId, panelNumber, queueData.task_id);
                     if (!pollResult.ok || !pollResult.image_url) {
-                        status = media.querySelector(".panel-status");
-                        if (status) status.textContent = pollResult.error || "Could not draw this panel. Try again.";
-                        media.querySelector(".panel-placeholder")?.classList.remove("is-drawing");
+                        fail(pollResult.error || "Could not draw this panel. Try again.");
                         return;
                     }
                     imageUrl = pollResult.image_url;
@@ -184,10 +204,10 @@
 
                 const loaded = await loadImageWithRetry(media, panelNumber, imageUrl, caption);
                 if (!loaded) {
-                    showPanelPlaceholder(media, "Could not draw this panel (rate limited). Try again.");
+                    fail("Could not draw this panel (rate limited). Try again.");
                 }
             } catch (err) {
-                showPanelPlaceholder(media, `Error: ${err.message || "Could not draw this panel."}`);
+                fail(`Error: ${err.message || "Could not draw this panel."}`);
             } finally {
                 // Always leave a retry button behind, success or failure.
                 ensureRegenerateButton(media, panelNumber);
@@ -214,16 +234,29 @@
         }
 
         function drawPanel(panelNumber) {
-            return runPanelJob(panelNumber, `/dreams/${dreamId}/panels/${panelNumber}/image/generate`);
+            const suffix = freshImages ? "?new=1" : "";
+            return runPanelJob(panelNumber, `/dreams/${dreamId}/panels/${panelNumber}/image/generate${suffix}`);
         }
 
-        function regeneratePanel(panelNumber, button) {
+        function regeneratePanel(panelNumber, button, { fromBrokenImage = false } = {}) {
             const media = panelGrid.querySelector(`[data-panel-media="${panelNumber}"]`);
             if (!media) return Promise.resolve();
-            showPanelPlaceholder(media, `Redrawing panel ${panelNumber}…`);
-            if (button) button.disabled = true;
-            return runPanelJob(panelNumber, `/dreams/${dreamId}/panels/${panelNumber}/image/regenerate`).finally(() => {
-                if (button) button.disabled = false;
+            if (fromBrokenImage) {
+                // Nothing good on screen to preserve — show a normal placeholder.
+                showPanelPlaceholder(media, `Redrawing panel ${panelNumber}…`);
+            }
+            const originalLabel = button?.textContent;
+            if (button) {
+                button.disabled = true;
+                button.textContent = "Regenerating…";
+            }
+            return runPanelJob(panelNumber, `/dreams/${dreamId}/panels/${panelNumber}/image/regenerate`, {
+                keepCurrentOnFailure: !fromBrokenImage,
+            }).finally(() => {
+                if (button) {
+                    button.disabled = false;
+                    button.textContent = originalLabel;
+                }
             });
         }
 
@@ -248,7 +281,7 @@
                 () => {
                     const media = img.closest("[data-panel-media]");
                     const panelNumber = media?.getAttribute("data-panel-media");
-                    if (panelNumber) regeneratePanel(panelNumber);
+                    if (panelNumber) regeneratePanel(panelNumber, null, { fromBrokenImage: true });
                 },
                 { once: true }
             );

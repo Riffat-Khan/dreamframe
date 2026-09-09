@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import random
 import time
 from pathlib import Path
 from urllib.parse import quote
@@ -73,7 +74,15 @@ def _extension_for_bytes(data: bytes) -> str:
     return "jpg"
 
 
-def _generate_pollinations(*, prompt: str, out_path: Path, save_to_disk: bool = True, dream_id: int = None, panel_number: int = None) -> Path | str:
+def _generate_pollinations(
+    *,
+    prompt: str,
+    out_path: Path,
+    save_to_disk: bool = True,
+    dream_id: int = None,
+    panel_number: int = None,
+    variant: int = 0,
+) -> Path | str:
     """
     Free anonymous Pollinations images (no signup). ~1 request / 15–20s.
 
@@ -83,16 +92,17 @@ def _generate_pollinations(*, prompt: str, out_path: Path, save_to_disk: bool = 
         save_to_disk: If False, returns direct image URL instead of saving
         dream_id: Optional dream ID for deterministic seed
         panel_number: Optional panel number for deterministic seed
+        variant: 0 = deterministic seed (same panel always draws the same
+            image); non-zero shifts the seed so a "regenerate" actually
+            gets a different picture instead of the same cached one.
 
     Returns:
         Path object (if save_to_disk=True) or URL string (if save_to_disk=False)
     """
     encoded = quote(prompt[:450])
 
-    # Use deterministic seed so Pollinations caches the same image for the same panel
-    # This prevents URL expiration issues - same prompt = same seed = Pollinations returns cached image
     if dream_id is not None and panel_number is not None:
-        seed = (dream_id * 1000 + panel_number) % 100000
+        seed = (dream_id * 1000 + panel_number + variant) % 100000
     else:
         seed = int(time.time()) % 100000
 
@@ -151,6 +161,8 @@ def _generate_pollinations(*, prompt: str, out_path: Path, save_to_disk: bool = 
                 time.sleep(5)
                 continue
 
+            if dream_id is not None and panel_number is not None:
+                delete_panel_image(dream_id, panel_number)
             ext = _extension_for_bytes(data)
             final_path = out_path.with_suffix(f".{ext}")
             final_path.write_bytes(data)
@@ -210,7 +222,15 @@ def _generate_huggingface(*, prompt: str, out_path: Path, save_to_disk: bool = T
     raise RuntimeError("Hugging Face image generation failed")
 
 
-def _generate_one_image(*, prompt: str, out_path: Path, save_to_disk: bool = True, dream_id: int = None, panel_number: int = None) -> Path | str:
+def _generate_one_image(
+    *,
+    prompt: str,
+    out_path: Path,
+    save_to_disk: bool = True,
+    dream_id: int = None,
+    panel_number: int = None,
+    variant: int = 0,
+) -> Path | str:
     """
     Generate a single image. Returns either a file Path (if saved) or URL string.
 
@@ -221,18 +241,19 @@ def _generate_one_image(*, prompt: str, out_path: Path, save_to_disk: bool = Tru
                       If False, returns direct image URL (Pollinations only).
         dream_id: Optional dream ID for deterministic seed
         panel_number: Optional panel number for deterministic seed
+        variant: see _generate_pollinations
     """
     provider = (current_app.config.get("IMAGE_PROVIDER") or "pollinations").lower()
     if provider == "huggingface":
         return _generate_huggingface(prompt=prompt, out_path=out_path, save_to_disk=save_to_disk)
     if provider == "auto":
         try:
-            return _generate_pollinations(prompt=prompt, out_path=out_path, save_to_disk=save_to_disk, dream_id=dream_id, panel_number=panel_number)
+            return _generate_pollinations(prompt=prompt, out_path=out_path, save_to_disk=save_to_disk, dream_id=dream_id, panel_number=panel_number, variant=variant)
         except Exception as exc:  # noqa: BLE001
             current_app.logger.warning("Pollinations failed, trying HF: %s", exc)
             return _generate_huggingface(prompt=prompt, out_path=out_path, save_to_disk=save_to_disk)
     # Default free platform
-    return _generate_pollinations(prompt=prompt, out_path=out_path, save_to_disk=save_to_disk, dream_id=dream_id, panel_number=panel_number)
+    return _generate_pollinations(prompt=prompt, out_path=out_path, save_to_disk=save_to_disk, dream_id=dream_id, panel_number=panel_number, variant=variant)
 
 
 def generate_one_panel_image(
@@ -243,9 +264,14 @@ def generate_one_panel_image(
     dream_text: str,
     panel_number: int,
     force: bool = False,
+    new_variant: bool = False,
 ) -> tuple[AnalysisResult, str | None, str | None]:
     """
     Draw a single panel. Returns (analysis, image_url, error).
+
+    new_variant=True asks for a different picture than last time (used by
+    "Regenerate"); otherwise the seed is deterministic per dream+panel so the
+    first draw is stable/cacheable.
 
     Production Mode:
     - On Vercel: Uses direct image URLs from API (no local file saving)
@@ -264,13 +290,16 @@ def generate_one_panel_image(
     # Vercel sets VERCEL environment variable
     is_production = os.getenv("VERCEL") or os.getenv("NODE_ENV") == "production"
     save_to_disk = not is_production
+    variant = random.randint(1, 99_999) if new_variant else 0
 
-    delete_panel_image(dream_id, panel_number)
+    # Note: the old local file (if any) is only deleted once a new one is
+    # successfully fetched (inside _generate_pollinations) — a failed
+    # regenerate must never leave the panel with no image at all.
     base = _generated_dir() / f"dream_{dream_id}_panel_{panel_number}"
 
     try:
         prompt = _build_scenic_prompt(target, style=style, dream_text=dream_text)
-        result = _generate_one_image(prompt=prompt, out_path=base, save_to_disk=save_to_disk, dream_id=dream_id, panel_number=panel_number)
+        result = _generate_one_image(prompt=prompt, out_path=base, save_to_disk=save_to_disk, dream_id=dream_id, panel_number=panel_number, variant=variant)
 
         # Handle both Path and string URL returns
         if isinstance(result, Path):

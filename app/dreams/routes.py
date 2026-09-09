@@ -1,5 +1,7 @@
 """Dream journal HTTP endpoints — thin wrappers around views."""
 
+from flask import request
+
 from app.auth.decorators import login_required
 from app.dreams import bp
 from app.dreams import views
@@ -75,7 +77,8 @@ def generate_panel_image(dream_id: int, panel_number: int):
 @login_required
 def queue_panel_image_generation(dream_id: int, panel_number: int):
     """Queue an async image generation task."""
-    return views.queue_panel_image_generation(dream_id, panel_number)
+    new_variant = request.args.get("new") == "1"
+    return views.queue_panel_image_generation(dream_id, panel_number, new_variant=new_variant)
 
 
 @bp.get("/dreams/<int:dream_id>/panels/<int:panel_number>/image/status/<task_id>")
