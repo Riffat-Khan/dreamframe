@@ -577,6 +577,23 @@ body.is-loading {
   margin: 0;
 }
 
+.panel-regen-btn {
+  justify-self: start;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0.35rem 0.7rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.panel-regen-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
 .journal-list {
   display: grid;
   gap: 0.8rem;

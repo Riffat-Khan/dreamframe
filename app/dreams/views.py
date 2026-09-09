@@ -16,7 +16,7 @@ from app.extensions import db
 from app.models import DreamAnalysis, DreamEntry, DreamSymbol, DreamSymbolLink
 from app.services.ai import generate_dream_analysis
 from app.services.analysis_utils import analysis_to_storage, parse_analysis
-from app.services.images import delete_dream_images, generate_one_panel_image
+from app.services.images import delete_dream_images, delete_panel_image, generate_one_panel_image
 from app.services.postcard import build_postcard_svg
 from app.services.task_queue import get_task_queue
 
@@ -50,7 +50,7 @@ def create_dream():
 
     save_analysis(entry, analysis)
     flash_mock_ai_notice_if_needed()
-    flash("Comic ready — drawing all three scenic panels at once.", "info")
+    flash("Comic ready — drawing the scenic panels one by one.", "info")
     return redirect(url_for("dreams.dream_detail", dream_id=entry.id))
 
 
@@ -151,7 +151,7 @@ def update_dream(dream_id: int):
             style=style,
         )
         save_analysis(dream, analysis)
-        flash("Dream updated. Drawing scenic panels in parallel.", "info")
+        flash("Dream updated. Drawing scenic panels one by one.", "info")
     else:
         flash("Dream text saved. Use Regenerate to rebuild the comic.", "info")
 
@@ -166,7 +166,7 @@ def regenerate_dream(dream_id: int):
         style=dream.style,
     )
     save_analysis(dream, analysis)
-    flash("Comic regenerated. Drawing scenic panels in parallel.", "info")
+    flash("Comic regenerated. Drawing scenic panels one by one.", "info")
     return redirect(url_for("dreams.dream_detail", dream_id=dream.id))
 
 
@@ -181,7 +181,7 @@ def regenerate_images(dream_id: int):
         panel.image_url = None
     delete_dream_images(dream.id)
     persist_analysis_row(dream, analysis)
-    flash("Redrawing scenic panels in parallel.", "info")
+    flash("Redrawing scenic panels one by one.", "info")
     return redirect(url_for("dreams.dream_detail", dream_id=dream.id))
 
 
@@ -304,6 +304,22 @@ def queue_panel_image_generation(dream_id: int, panel_number: int):
         "panel_number": panel_number,
         "status": "queued"
     }), 202
+
+
+def regenerate_panel_image(dream_id: int, panel_number: int):
+    """Clear one panel's image and redraw just that panel."""
+    dream = get_owned_dream(dream_id)
+    if not dream.analysis:
+        return jsonify({"ok": False, "error": "No comic to illustrate."}), 404
+
+    analysis = parse_analysis(dream.analysis)
+    existing = next((p for p in analysis.panels if p.panel_number == panel_number), None)
+    if existing is None:
+        return jsonify({"ok": False, "error": "Panel not found."}), 404
+
+    delete_panel_image(dream.id, panel_number)
+    persist_panel_image_url(dream, panel_number=panel_number, image_url=None)
+    return queue_panel_image_generation(dream_id, panel_number)
 
 
 def check_image_generation_status(dream_id: int, panel_number: int, task_id: str):

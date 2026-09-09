@@ -30,7 +30,7 @@
         <figure class="postcard-panel">
           <div class="postcard-panel-frame">
             {% if panel.image_url %}
-              <img src="{{ panel.image_url }}?v={{ dream.id }}-{{ panel.panel_number }}" alt="Panel {{ panel.panel_number }}" />
+              <img src="{{ cache_bust(panel.image_url, dream.id ~ '-' ~ panel.panel_number) }}" alt="Panel {{ panel.panel_number }}" />
             {% else %}
               <div class="postcard-fallback">{{ panel.scene_description }}</div>
             {% endif %}

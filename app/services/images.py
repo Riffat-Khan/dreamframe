@@ -102,47 +102,55 @@ def _generate_pollinations(*, prompt: str, out_path: Path, save_to_disk: bool = 
         f"?width=768&height=768&nologo=true&model=flux&seed={seed}"
     )
 
-    # If not saving to disk (production), return the URL directly
     if not save_to_disk:
+        # Production (Vercel): don't block the request on Pollinations. A
+        # retry loop here risks FUNCTION_INVOCATION_TIMEOUT (confirmed in
+        # prod: a 45s httpx timeout x 3 attempts + backoff blew well past
+        # even a 60s maxDuration). The browser retries instead — see
+        # loadImageWithRetry() in app.js — which has no such time limit.
         return image_url
 
+    # Local dev only past this point (save_to_disk=True), no timeout constraint.
     headers = {
         "User-Agent": "Mozilla/5.0 Dreamframe/1.0",
         "Accept": "image/jpeg,image/png,image/*",
     }
+    rate_limit_statuses = {402, 429}
+    transient_server_statuses = {500, 502, 503, 504}
+    max_attempts = 4
 
     last_error: Exception | None = None
-    with httpx.Client(timeout=120.0, follow_redirects=True) as client:
-        for attempt in range(4):
+    with httpx.Client(timeout=45.0, follow_redirects=True) as client:
+        for attempt in range(max_attempts):
             response = client.get(image_url, headers=headers)
-            if response.status_code in {402, 429}:
-                # Rate limited - use exponential backoff capped to avoid Vercel timeout
-                # On production (Vercel), be more aggressive with retry timing
-                is_production = os.getenv("VERCEL") or os.getenv("NODE_ENV") == "production"
-                if is_production:
-                    # On Vercel: Use shorter waits to stay within 60s timeout
-                    # Attempt 1: 3s, Attempt 2: 6s, Attempt 3: 12s (total ~21s)
-                    wait_for = min(3 * (2 ** attempt), 15)
-                else:
-                    # Local: Can use longer waits
-                    wait_for = max(int(response.headers.get("Retry-After", 20)), 20)
-
+            if response.status_code in rate_limit_statuses:
+                wait_for = max(int(response.headers.get("Retry-After", 20)), 20)
                 current_app.logger.warning(
                     "Free image API rate limited (attempt %s/%s). Waiting %ss…",
                     attempt + 1,
-                    4,
+                    max_attempts,
                     wait_for,
                 )
                 time.sleep(wait_for)
                 last_error = RuntimeError(f"rate limited ({response.status_code})")
                 continue
+            if response.status_code in transient_server_statuses:
+                current_app.logger.warning(
+                    "Free image API returned %s (attempt %s/%s). Waiting 8s…",
+                    response.status_code,
+                    attempt + 1,
+                    max_attempts,
+                )
+                time.sleep(8)
+                last_error = RuntimeError(f"server error ({response.status_code})")
+                continue
             response.raise_for_status()
             data = response.content
             if len(data) < 2000:
                 last_error = RuntimeError("image too small / invalid")
-                # Shorter sleep for invalid responses
                 time.sleep(5)
                 continue
+
             ext = _extension_for_bytes(data)
             final_path = out_path.with_suffix(f".{ext}")
             final_path.write_bytes(data)
