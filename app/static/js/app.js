@@ -150,6 +150,7 @@
             if (!dreamId) {
                 if (status) status.textContent = "Could not determine dream ID.";
                 placeholder?.classList.remove("is-drawing");
+                ensureRegenerateButton(media, panelNumber);
                 return;
             }
 
@@ -187,7 +188,29 @@
                 }
             } catch (err) {
                 showPanelPlaceholder(media, `Error: ${err.message || "Could not draw this panel."}`);
+            } finally {
+                // Always leave a retry button behind, success or failure.
+                ensureRegenerateButton(media, panelNumber);
             }
+        }
+
+        function createRegenerateButton(panelNumber) {
+            const button = document.createElement("button");
+            button.type = "button";
+            button.className = "panel-regen-btn";
+            button.dataset.regeneratePanel = panelNumber;
+            button.textContent = "↻ Regenerate this panel";
+            button.addEventListener("click", () => regeneratePanel(panelNumber, button));
+            return button;
+        }
+
+        // Jinja only renders this button for panels that already had an image
+        // at page-load time. A panel drawn live by JS never gets one that way,
+        // so add it here the moment that panel's image actually loads.
+        function ensureRegenerateButton(media, panelNumber) {
+            const card = media.closest(".panel-card");
+            if (!card || card.querySelector(`[data-regenerate-panel="${panelNumber}"]`)) return;
+            card.insertBefore(createRegenerateButton(panelNumber), media.nextSibling);
         }
 
         function drawPanel(panelNumber) {
